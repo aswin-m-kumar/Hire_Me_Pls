@@ -13,4 +13,15 @@ const validate =
     next();
   };
 
-module.exports = { validate };
+const validateResumeText = (text) => {
+  const trimmed = (text || "").trim();
+  if (trimmed.length === 0) {
+    throw ApiError.badRequest("Resume content is empty");
+  }
+  if (trimmed.length > 30000) {
+    throw ApiError.badRequest("Resume exceeds maximum allowed size");
+  }
+  return trimmed;
+};
+
+module.exports = { validate, validateResumeText };
