@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const morgan = require("morgan");
+const path = require("path");
 
 const env = require("./config/env");
 const { connectDB } = require("./config/db");
@@ -37,6 +38,15 @@ app.use("/api/dashboard", dashboardRouter);
 app.use("/api/insights", insightsRouter);
 app.use("/api/versions", versionsRouter);
 app.use("/api/history", historyRouter);
+
+if (env.isProd) {
+  const frontendDist = path.join(__dirname, "../../frontend/ai-resume-checker-ui-boilerplate-code/dist");
+  app.use(express.static(frontendDist));
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api")) return notFound(req, res, next);
+    res.sendFile(path.join(frontendDist, "index.html"));
+  });
+}
 
 app.use(notFound);
 app.use(errorHandler);
