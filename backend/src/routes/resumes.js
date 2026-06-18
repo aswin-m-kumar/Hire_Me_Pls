@@ -144,17 +144,29 @@ router.post(
     const versionId = req.body.versionId || resume.currentVersionId;
     if (!versionId) throw ApiError.badRequest("No version to analyze");
     const version = await loadVersion(resume._id, versionId);
+    const targetRole = req.body.targetRole?.trim() || "";
+
+    const existingAnalysis = await Analysis.findOne({
+      resumeId: resume._id,
+      versionId: version._id,
+      targetRole,
+    });
+
+    if (existingAnalysis) {
+      return res.status(200).json({ analysis: existingAnalysis, cached: true });
+    }
 
     const { analysis, model, promptTokens, responseTokens } =
       await analyzeResume({
         rawText: version.rawText,
-        targetRole: req.body.targetRole,
+        targetRole,
       });
 
     const saved = await Analysis.create({
       userId: req.user._id,
       resumeId: resume._id,
       versionId: version._id,
+      targetRole,
       atsScore: analysis.atsScore,
       scoreBreakdown: analysis.scoreBreakdown,
       issues: analysis.issues,
