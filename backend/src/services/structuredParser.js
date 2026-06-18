@@ -217,7 +217,7 @@ async function parseResume(rawText) {
       let text, usage;
       try {
         const res = await ai.models.generateContent({
-          model: "gemini-2.0-flash-lite",
+          model: env.geminiModel,
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           config: {
             responseMimeType: "application/json",
@@ -255,7 +255,7 @@ async function parseResume(rawText) {
       }
 
       const latency = Date.now() - startTime;
-      console.log(`[Gemini]\nModel: gemini-2.0-flash-lite\nPrompt Tokens: ${usage.promptTokenCount || 0}\nResponse Tokens: ${usage.candidatesTokenCount || 0}\nLatency: ${latency}ms\nRetries: ${retryCount}`);
+      console.log(`[Gemini]\nModel: ${env.geminiModel}\nPrompt Tokens: ${usage.promptTokenCount || 0}\nResponse Tokens: ${usage.candidatesTokenCount || 0}\nLatency: ${latency}ms\nRetries: ${retryCount}`);
 
       return validated;
     });
