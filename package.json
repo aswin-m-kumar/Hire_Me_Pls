@@ -4,8 +4,8 @@
   "private": true,
   "description": "Root workspace orchestration for Hire Me Pls monorepo",
   "scripts": {
-    "install:backend": "cd backend && npm install",
-    "install:frontend": "cd frontend/ai-resume-checker-ui-boilerplate-code && npm install",
+    "install:backend": "cd backend && npm install --include=dev",
+    "install:frontend": "cd frontend/ai-resume-checker-ui-boilerplate-code && npm install --include=dev",
     "build:frontend": "cd frontend/ai-resume-checker-ui-boilerplate-code && npm run build",
     "build": "npm run install:backend && npm run install:frontend && npm run build:frontend",
     "start": "cd backend && npm start",
