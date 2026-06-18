@@ -2,6 +2,8 @@ const { GoogleGenAI, Type } = require("@google/genai");
 const { z } = require("zod");
 
 const env = require("../config/env");
+const withRetry = require("../utils/withRetry");
+const { validateResumeText } = require("../middleware/validate");
 
 const ai = env.geminiApiKey ? new GoogleGenAI({ apiKey: env.geminiApiKey }) : null;
 
@@ -197,34 +199,72 @@ const EMPTY = {
 };
 
 async function parseResume(rawText) {
-  if (!ai || !rawText?.trim()) return EMPTY;
+  if (!ai) return EMPTY;
 
-  const prompt = buildPrompt(rawText);
+  const validText = validateResumeText(rawText);
+  const prompt = buildPrompt(validText);
 
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const result = await ai.models.generateContent({
-        model: env.geminiModel,
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: {
-          responseMimeType: "application/json",
-          responseSchema,
-          temperature: 0.1,
-        },
-      });
+  const startTime = Date.now();
+  let retryCount = 0;
 
-      const text = typeof result.text === "function" ? result.text() : result.text;
-      if (!text) throw new Error("Empty response");
-      const parsed = JSON.parse(text);
-      return validator.parse(parsed);
-    } catch (err) {
-      if (attempt === 2) {
-        console.error("Structured parse failed:", err.message);
-        return EMPTY;
+  try {
+    const result = await withRetry(async (attempt) => {
+      retryCount = attempt - 1;
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+      let text, usage;
+      try {
+        const res = await ai.models.generateContent({
+          model: "gemini-2.0-flash-lite",
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          config: {
+            responseMimeType: "application/json",
+            responseSchema,
+            temperature: 0.1,
+          },
+        }, { signal: controller.signal });
+
+        text = typeof res.text === "function" ? res.text() : res.text;
+        usage = res.usageMetadata || {};
+      } catch (err) {
+        if (controller.signal.aborted) {
+          throw new Error("Gemini request timed out");
+        }
+        throw err;
+      } finally {
+        clearTimeout(timeoutId);
       }
-    }
+
+      if (!text) throw new Error("Empty response");
+
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (jsonErr) {
+        throw jsonErr;
+      }
+
+      let validated;
+      try {
+        validated = validator.parse(parsed);
+      } catch (zodErr) {
+        console.error(`[Gemini] Validation failures:`, zodErr.issues || zodErr.message);
+        throw zodErr;
+      }
+
+      const latency = Date.now() - startTime;
+      console.log(`[Gemini]\nModel: gemini-2.0-flash-lite\nPrompt Tokens: ${usage.promptTokenCount || 0}\nResponse Tokens: ${usage.candidatesTokenCount || 0}\nLatency: ${latency}ms\nRetries: ${retryCount}`);
+
+      return validated;
+    });
+
+    return result;
+  } catch (err) {
+    console.error("Structured parse failed:", err.message);
+    return EMPTY;
   }
-  return EMPTY;
 }
 
 module.exports = { parseResume };

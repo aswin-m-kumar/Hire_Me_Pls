@@ -3,6 +3,8 @@ const { z } = require("zod");
 
 const env = require("../config/env");
 const ApiError = require("../utils/ApiError");
+const withRetry = require("../utils/withRetry");
+const { validateResumeText } = require("../middleware/validate");
 
 const ai = env.geminiApiKey
   ? new GoogleGenAI({ apiKey: env.geminiApiKey })
@@ -115,47 +117,91 @@ const analysisValidator = z.object({
   keywordsPresent: z.array(z.string()).default([]),
   keywordsMissing: z.array(z.string()).default([]),
   summary: z.string(),
-});
+}).refine(data => {
+  const sum = Object.values(data.scoreBreakdown).reduce((a, b) => a + b, 0);
+  return Math.abs(sum - data.atsScore) <= 2;
+}, { message: "ATS score does not match score breakdown." });
 
 function buildPrompt({ rawText, targetRole }) {
   return [
-    "You are a senior technical recruiter and ATS expert reviewing a resume.",
-    targetRole
-      ? `Target role: ${targetRole}.`
-      : "No specific target role was provided - assess for the role the candidate appears to be aiming for.",
-    "",
-    "Score the resume from 0-100 based on ATS readiness (keyword match, parseable formatting, quantified impact, clarity).",
-    "Return exactly 5 prioritized issues, 5 standout strengths, and 5-10 weak bullets rewritten to be stronger, quantified, and ATS-friendly.",
-    "Rewrites must preserve the original meaning. Each rewrite needs a one-line rationale.",
-    "Identify keywords clearly present and notable keywords missing for the apparent target role.",
-    "Be specific and evidence-based - cite phrasing from the resume in explanations.",
-    "",
-    "RESUME TEXT:",
-    "----------",
+    'You are a ruthless but constructive expert ATS (Applicant Tracking System) parser and senior technical recruiter. Your job is to "roast" the provided resume and offer actionable, highly specific feedback.',
+    '',
+    'CRITICAL CONSTRAINTS:',
+    '',
+    '1. Length Limits',
+    '- Issues and Strengths MUST be limited to 1-2 sentences maximum per point.',
+    '- Any suggested rewrites MUST be exactly one paragraph maximum.',
+    '- Limit extracted keywords to at most 10.',
+    '',
+    '2. Scoring Consistency',
+    '- Generate an atsScore (0-100).',
+    '- Generate scoreBreakdown containing subscores.',
+    '- The scoreBreakdown should sum as closely as possible to atsScore.',
+    '',
+    '3. Roasting Quality',
+    '- Quote exact phrases from the resume when identifying issues.',
+    '- Do not invent line numbers.',
+    '- Aggressively flag clichés, vague metrics, weak action verbs, and buzzword stuffing.',
+    '',
+    '4. Edge Cases',
+    '- No Target Role:',
+    '  Evaluate against general software engineering resume best practices.',
+    '',
+    '- Minimal Experience:',
+    '  Heavily evaluate Education and Projects.',
+    '',
+    '- Non-English Content:',
+    '  Mention ATS parsing risks while continuing analysis.',
+    '',
+    '- Resume Length:',
+    '  Explicitly penalize resumes that are suspiciously short or excessively long.',
+    '',
+    '5. Output Rules',
+    '- Return valid JSON only.',
+    '- Do not include markdown.',
+    '- Do not include code fences.',
+    '- Do not include explanatory text outside JSON.',
+    '',
+    targetRole ? `Target Role: ${targetRole}` : '',
+    '',
+    'RESUME TEXT:',
+    '----------',
     rawText,
-    "----------",
-  ].join("\n");
+    '----------'
+  ].join('\n');
 }
 
 async function callGemini(prompt) {
-  const result = await ai.models.generateContent({
-    model: env.geminiModel,
-    contents: [{ role: "user", parts: [{ text: prompt }] }],
-    config: {
-      responseMimeType: "application/json",
-      responseSchema,
-      temperature: 0.4,
-    },
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-  const text =
-    typeof result.text === "function" ? result.text() : result.text;
-  if (!text) throw new Error("Empty response from Gemini");
+  try {
+    const result = await ai.models.generateContent({
+      model: env.geminiModel,
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: {
+        responseMimeType: "application/json",
+        responseSchema,
+        temperature: 0.4,
+      },
+    }, { signal: controller.signal });
 
-  return {
-    text,
-    usage: result.usageMetadata || {},
-  };
+    const text =
+      typeof result.text === "function" ? result.text() : result.text;
+    if (!text) throw new Error("Empty response from Gemini");
+
+    return {
+      text,
+      usage: result.usageMetadata || {},
+    };
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("Gemini request timed out");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 async function analyzeResume({ rawText, targetRole }) {
@@ -165,29 +211,49 @@ async function analyzeResume({ rawText, targetRole }) {
     );
   }
 
-  const prompt = buildPrompt({ rawText, targetRole });
+  const validText = validateResumeText(rawText);
+  const prompt = buildPrompt({ rawText: validText, targetRole });
 
-  let lastErr;
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
+  const startTime = Date.now();
+  let retryCount = 0;
+
+  try {
+    const result = await withRetry(async (attempt) => {
+      retryCount = attempt - 1;
       const { text, usage } = await callGemini(prompt);
-      const parsed = JSON.parse(text);
-      const validated = analysisValidator.parse(parsed);
+      
+      let parsed;
+      try {
+        parsed = JSON.parse(text);
+      } catch (err) {
+        throw new Error("Failed to parse Gemini output as JSON");
+      }
+
+      let validated;
+      try {
+        validated = analysisValidator.parse(parsed);
+      } catch (zodErr) {
+        console.error(`[Gemini] Validation failures:`, zodErr.issues || zodErr.message);
+        throw zodErr;
+      }
+
+      const latency = Date.now() - startTime;
+      console.log(`[Gemini]\nModel: ${env.geminiModel}\nPrompt Tokens: ${usage.promptTokenCount || 0}\nResponse Tokens: ${usage.candidatesTokenCount || 0}\nLatency: ${latency}ms\nRetries: ${retryCount}`);
+
       return {
         analysis: validated,
         model: env.geminiModel,
         promptTokens: usage.promptTokenCount,
         responseTokens: usage.candidatesTokenCount,
       };
-    } catch (err) {
-      lastErr = err;
-      if (attempt === 2) break;
-    }
+    });
+    
+    return result;
+  } catch (err) {
+    throw ApiError.internal(
+      `Gemini analysis failed: ${err.message || "unknown error"}`
+    );
   }
-
-  throw ApiError.internal(
-    `Gemini analysis failed: ${lastErr?.message || "unknown error"}`
-  );
 }
 
 module.exports = { analyzeResume };
