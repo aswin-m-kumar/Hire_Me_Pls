@@ -42,7 +42,7 @@ app.use("/api/history", historyRouter);
 if (env.isProd) {
   const frontendDist = path.join(__dirname, "../../frontend/ai-resume-checker-ui-boilerplate-code/dist");
   app.use(express.static(frontendDist));
-  app.get("*", (req, res, next) => {
+  app.get("*splat", (req, res, next) => {
     if (req.path.startsWith("/api")) return notFound(req, res, next);
     res.sendFile(path.join(frontendDist, "index.html"));
   });
