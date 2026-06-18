@@ -10,8 +10,6 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "build:frontend": "cd ../frontend/ai-resume-checker-ui-boilerplate-code && npm install && npm run build",
-    "postinstall": "npm run build:frontend",
     "seed": "node src/seed.js"
   },
 "dependencies": {

@@ -1,0 +1,19 @@
+{
+  "name": "hire-me-pls-root",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Root workspace orchestration for Hire Me Pls monorepo",
+  "scripts": {
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd frontend/ai-resume-checker-ui-boilerplate-code && npm install",
+    "build:frontend": "cd frontend/ai-resume-checker-ui-boilerplate-code && npm run build",
+    "build": "npm run install:backend && npm run install:frontend && npm run build:frontend",
+    "start": "cd backend && npm start",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend/ai-resume-checker-ui-boilerplate-code && npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
