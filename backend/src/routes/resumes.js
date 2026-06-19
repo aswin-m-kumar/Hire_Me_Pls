@@ -131,6 +131,7 @@ router.delete(
 const analyzeBody = z.object({
   versionId: objectIdSchema.optional(),
   targetRole: z.string().trim().max(120).optional(),
+  jobDescription: z.string().trim().max(10000).optional(),
 });
 
 router.post(
@@ -145,11 +146,13 @@ router.post(
     if (!versionId) throw ApiError.badRequest("No version to analyze");
     const version = await loadVersion(resume._id, versionId);
     const targetRole = req.body.targetRole?.trim() || "";
+    const jobDescription = req.body.jobDescription?.trim() || "";
 
     const existingAnalysis = await Analysis.findOne({
       resumeId: resume._id,
       versionId: version._id,
       targetRole,
+      jobDescription,
     });
 
     if (existingAnalysis) {
@@ -160,6 +163,7 @@ router.post(
       await analyzeResume({
         rawText: version.rawText,
         targetRole,
+        jobDescription,
       });
 
     const saved = await Analysis.create({
@@ -167,6 +171,7 @@ router.post(
       resumeId: resume._id,
       versionId: version._id,
       targetRole,
+      jobDescription,
       atsScore: analysis.atsScore,
       scoreBreakdown: analysis.scoreBreakdown,
       issues: analysis.issues,

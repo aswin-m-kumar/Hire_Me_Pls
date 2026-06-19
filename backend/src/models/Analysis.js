@@ -56,6 +56,7 @@ const analysisSchema = new mongoose.Schema(
       index: true,
     },
     targetRole: { type: String, default: "" },
+    jobDescription: { type: String, default: "" },
     atsScore: { type: Number, min: 0, max: 100, required: true },
     scoreBreakdown: scoreBreakdownSchema,
     issues: { type: [issueSchema], default: [] },

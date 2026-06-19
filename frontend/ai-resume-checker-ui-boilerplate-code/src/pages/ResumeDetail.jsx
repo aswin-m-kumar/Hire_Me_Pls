@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -51,6 +52,7 @@ export default function ResumeDetail() {
   const analyze = useAnalyzeResume(id);
   const applyRewrites = useApplyRewrites(id);
   const [targetRole, setTargetRole] = useState("");
+  const [jobDescription, setJobDescription] = useState("");
   const [tab, setTab] = useState("score");
 
   async function runAnalyze() {
@@ -58,6 +60,7 @@ export default function ResumeDetail() {
       await analyze.mutateAsync({
         versionId: activeVersionId,
         targetRole: targetRole.trim() || undefined,
+        jobDescription: jobDescription.trim() || undefined,
       });
     } catch {
       /* surfaced below */
@@ -81,6 +84,7 @@ export default function ResumeDetail() {
           await analyze.mutateAsync({
             versionId: newVersionId,
             targetRole: targetRole.trim() || undefined,
+            jobDescription: jobDescription.trim() || undefined,
           });
         } catch {
           /* surfaced via analyze.error inside the Run analysis card */
@@ -154,29 +158,36 @@ export default function ResumeDetail() {
               onChange={setActiveVersionId}
             />
           </div>
-          <div className="flex items-center gap-3 flex-1 min-w-[280px] max-w-[520px]">
+          <div className="flex flex-col gap-3 flex-1 min-w-[280px] max-w-[520px]">
             <Input
               placeholder="Target role (optional, e.g. Senior Frontend Engineer)"
               value={targetRole}
               onChange={(e) => setTargetRole(e.target.value)}
             />
-            <Button
-              variant="accent"
-              size="lg"
-              onClick={runAnalyze}
-              disabled={analyze.isPending || !activeVersionId}
-              className="shrink-0"
-            >
-              {analyze.isPending ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" /> Analyzing…
-                </>
-              ) : (
-                <>
-                  <Sparkles size={14} /> Analyze
-                </>
-              )}
-            </Button>
+            <Textarea
+              placeholder="Paste Job Description to score against (optional)"
+              value={jobDescription}
+              onChange={(e) => setJobDescription(e.target.value)}
+              rows={4}
+            />
+            <div className="self-end">
+              <Button
+                variant="accent"
+                size="lg"
+                onClick={runAnalyze}
+                disabled={analyze.isPending || !activeVersionId}
+              >
+                {analyze.isPending ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" /> Analyzing…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} /> Analyze
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
         {analyze.error && (

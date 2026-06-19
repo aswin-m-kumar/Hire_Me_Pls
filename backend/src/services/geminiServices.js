@@ -122,7 +122,7 @@ const analysisValidator = z.object({
   return Math.abs(sum - data.atsScore) <= 2;
 }, { message: "ATS score does not match score breakdown." });
 
-function buildPrompt({ rawText, targetRole }) {
+function buildPrompt({ rawText, targetRole, jobDescription }) {
   return [
     'You are a ruthless but constructive expert ATS (Applicant Tracking System) parser and senior technical recruiter. Your job is to "roast" the provided resume and offer actionable, highly specific feedback.',
     '',
@@ -163,6 +163,7 @@ function buildPrompt({ rawText, targetRole }) {
     '- Do not include explanatory text outside JSON.',
     '',
     targetRole ? `Target Role: ${targetRole}` : '',
+    jobDescription ? `\nJob Description to match against:\n${jobDescription}\n` : '',
     '',
     'RESUME TEXT:',
     '----------',
@@ -204,7 +205,7 @@ async function callGemini(prompt) {
   }
 }
 
-async function analyzeResume({ rawText, targetRole }) {
+async function analyzeResume({ rawText, targetRole, jobDescription }) {
   if (!ai) {
     throw ApiError.internal(
       "GEMINI_API_KEY is not configured on the server."
@@ -212,7 +213,7 @@ async function analyzeResume({ rawText, targetRole }) {
   }
 
   const validText = validateResumeText(rawText);
-  const prompt = buildPrompt({ rawText: validText, targetRole });
+  const prompt = buildPrompt({ rawText: validText, targetRole, jobDescription });
 
   const startTime = Date.now();
   let retryCount = 0;
